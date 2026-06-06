@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yo-kai Watch Scanner</title>
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Nunito:wght@400;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold: #FFD700;
+    --red: #E82C2C;
+    --navy: #1A1A3E;
+    --cream: #FFF8E7;
+    --teal: #00C9B1;
+    --pink: #FF6B9D;
+    --purple: #7C4DFF;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--navy);
+    color: var(--cream);
+    font-family: 'Nunito', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Starfield bg */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.4) 0%, transparent 100%),
+      radial-gradient(1px 1px at 80% 10%, rgba(255,255,255,0.3) 0%, transparent 100%),
+      radial-gradient(1px 1px at 50% 70%, rgba(255,255,255,0.3) 0%, transparent 100%),
+      radial-gradient(1px 1px at 10% 80%, rgba(255,255,255,0.2) 0%, transparent 100%),
+      radial-gradient(1px 1px at 90% 60%, rgba(255,255,255,0.4) 0%, transparent 100%),
+      radial-gradient(1px 1px at 35% 90%, rgba(255,255,255,0.2) 0%, transparent 100%),
+      radial-gradient(2px 2px at 65% 45%, rgba(255,255,255,0.15) 0%, transparent 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 16px;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    padding: 16px 0 12px;
+  }
+
+  .watch-logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(135deg, #FFD700, #FF8C00);
+    border-radius: 50px;
+    padding: 8px 20px;
+    margin-bottom: 8px;
+    box-shadow: 0 0 20px rgba(255,215,0,0.4);
+  }
+
+  .watch-icon {
+    width: 32px;
+    height: 32px;
+    background: var(--navy);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+
+  .watch-title {
+    font-family: 'Bangers', cursive;
+    font-size: 22px;
+    color: var(--navy);
+    letter-spacing: 1px;
+  }
+
+  .subtitle {
+    font-size: 13px;
+    color: rgba(255,248,231,0.6);
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* Camera viewport */
+  .scanner-frame {
+    position: relative;
+    margin: 14px 0;
+    border-radius: 20px;
+    overflow: hidden;
+    background: #0a0a1e;
+    aspect-ratio: 4/3;
+    border: 3px solid var(--gold);
+    box-shadow: 0 0 30px rgba(255,215,0,0.2), inset 0 0 30px rgba(0,0,0,0.5);
+  }
+
+  #camera-feed, #snapshot-canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  #snapshot-canvas { display: none; }
+
+  .scanner-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  /* Animated scan corners */
+  .corner {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    border-color: var(--teal);
+    border-style: solid;
+    border-width: 0;
+  }
+  .corner.tl { top: 12px; left: 12px; border-top-width: 3px; border-left-width: 3px; border-radius: 4px 0 0 0; }
+  .corner.tr { top: 12px; right: 12px; border-top-width: 3px; border-right-width: 3px; border-radius: 0 4px 0 0; }
+  .corner.bl { bottom: 12px; left: 12px; border-bottom-width: 3px; border-left-width: 3px; border-radius: 0 0 0 4px; }
+  .corner.br { bottom: 12px; right: 12px; border-bottom-width: 3px; border-right-width: 3px; border-radius: 0 0 4px 0; }
+
+  .scan-line {
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--teal), transparent);
+    box-shadow: 0 0 8px var(--teal);
+    animation: scanAnim 2.5s ease-in-out infinite;
+    opacity: 0;
+  }
+
+  .scan-line.active { opacity: 1; }
+
+  @keyframes scanAnim {
+    0% { top: 15%; }
+    50% { top: 80%; }
+    100% { top: 15%; }
+  }
+
+  .no-camera-msg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: rgba(255,248,231,0.4);
+    font-size: 14px;
+    font-weight: 700;
+    text-align: center;
+    padding: 20px;
+  }
+
+  .no-camera-msg .cam-icon {
+    font-size: 48px;
+    opacity: 0.3;
+  }
+
+  /* Buttons */
+  .controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .btn {
+    flex: 1;
+    padding: 14px;
+    border: none;
+    border-radius: 14px;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 900;
+    font-size: 15px;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.1s;
+    letter-spacing: 0.5px;
+  }
+
+  .btn:active { transform: scale(0.96); }
+
+  .btn-scan {
+    background: linear-gradient(135deg, var(--red), #C0392B);
+    color: white;
+    box-shadow: 0 4px 15px rgba(232,44,44,0.4);
+  }
+
+  .btn-scan:hover { box-shadow: 0 4px 20px rgba(232,44,44,0.6); }
+
+  .btn-scan:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .btn-camera {
+    background: linear-gradient(135deg, #2c3e7a, #1a2550);
+    color: var(--cream);
+    border: 2px solid rgba(255,255,255,0.15);
+    flex: 0 0 auto;
+    padding: 14px 18px;
+    font-size: 20px;
+  }
+
+  /* Result card */
+  .result-card {
+    background: linear-gradient(135deg, #1e1e4a, #2a1a4a);
+    border-radius: 20px;
+    padding: 20px;
+    border: 2px solid rgba(255,215,0,0.3);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    min-height: 100px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .result-card::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -30%;
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, rgba(124,77,255,0.15) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .result-idle {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    color: rgba(255,248,231,0.4);
+  }
+
+  .result-idle .orb {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+    border: 2px dashed rgba(255,255,255,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    flex-shrink: 0;
+  }
+
+  .result-idle p { font-size: 13px; font-weight: 700; line-height: 1.5; }
+
+  .loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 0;
+  }
+
+  .yokai-spinner {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: 3px solid rgba(255,215,0,0.2);
+    border-top-color: var(--gold);
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-state p {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--gold);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+  /* Yokai result display */
+  .yokai-result { display: flex; flex-direction: column; gap: 14px; }
+
+  .yokai-header { display: flex; align-items: center; gap: 14px; }
+
+  .yokai-medal {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    flex-shrink: 0;
+    border: 3px solid var(--gold);
+    box-shadow: 0 0 15px rgba(255,215,0,0.3);
+  }
+
+  .yokai-name {
+    font-family: 'Bangers', cursive;
+    font-size: 26px;
+    color: var(--gold);
+    letter-spacing: 1px;
+    line-height: 1.1;
+  }
+
+  .yokai-tribe {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: 20px;
+    display: inline-block;
+    margin-top: 3px;
+  }
+
+  .tribe-brave { background: rgba(232,44,44,0.2); color: #ff7070; }
+  .tribe-mysterious { background: rgba(124,77,255,0.2); color: #b39ddb; }
+  .tribe-charming { background: rgba(255,107,157,0.2); color: #ff9ec8; }
+  .tribe-tough { background: rgba(255,140,0,0.2); color: #ffb347; }
+  .tribe-heartful { background: rgba(0,201,177,0.2); color: #80e5d8; }
+  .tribe-shady { background: rgba(60,60,100,0.3); color: #9090cc; }
+  .tribe-slippery { background: rgba(0,150,200,0.2); color: #70c8e8; }
+  .tribe-eerie { background: rgba(80,200,80,0.2); color: #80d880; }
+
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,215,0,0.3), transparent);
+  }
+
+  .food-section { display: flex; flex-direction: column; gap: 8px; }
+
+  .food-label {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--teal);
+  }
+
+  .food-name {
+    font-family: 'Bangers', cursive;
+    font-size: 22px;
+    color: white;
+    letter-spacing: 0.5px;
+  }
+
+  .food-desc {
+    font-size: 13px;
+    color: rgba(255,248,231,0.65);
+    line-height: 1.6;
+    font-weight: 700;
+  }
+
+  .description-section {
+    background: rgba(0,0,0,0.2);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: rgba(255,248,231,0.7);
+    line-height: 1.6;
+    font-weight: 700;
+    border-left: 3px solid var(--purple);
+  }
+
+  .error-state {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #ff9090;
+  }
+
+  .error-icon { font-size: 24px; flex-shrink: 0; }
+  .error-state p { font-size: 13px; font-weight: 700; line-height: 1.5; }
+
+  /* Zoom controls */
+  .zoom-bar {
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(10,10,30,0.75);
+    border: 1px solid rgba(255,215,0,0.3);
+    border-radius: 30px;
+    padding: 6px 14px;
+    z-index: 5;
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    min-width: 180px;
+  }
+
+  .zoom-bar.visible {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .zoom-icon { font-size: 14px; flex-shrink: 0; }
+
+  .zoom-bar input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 110px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255,215,0,0.25);
+    outline: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .zoom-bar input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--gold);
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(255,215,0,0.6);
+  }
+
+  .zoom-bar input[type=range]::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--gold);
+    cursor: pointer;
+    border: none;
+  }
+
+  .zoom-label {
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--gold);
+    min-width: 30px;
+    text-align: right;
+  }
+
+  /* Scan flash */
+  .flash-overlay {
+    position: absolute;
+    inset: 0;
+    background: white;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.1s;
+    z-index: 10;
+    border-radius: 17px;
+  }
+
+  .flash-overlay.flash { opacity: 0.7; }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 14px 0 8px;
+    font-size: 11px;
+    color: rgba(255,248,231,0.25);
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+
+  /* Upload button */
+  .upload-area {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .btn-upload {
+    background: linear-gradient(135deg, #1e3a5f, #122540);
+    color: rgba(255,248,231,0.7);
+    border: 2px dashed rgba(255,255,255,0.2);
+    flex: 1;
+    padding: 12px;
+    border-radius: 14px;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+  }
+
+  .btn-upload:hover {
+    border-color: rgba(255,215,0,0.4);
+    color: var(--gold);
+  }
+
+  #file-input { display: none; }
+
+  .mode-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .tab {
+    flex: 1;
+    padding: 9px;
+    border-radius: 10px;
+    border: none;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 12px;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: all 0.2s;
+    background: rgba(255,255,255,0.05);
+    color: rgba(255,248,231,0.4);
+  }
+
+  .tab.active {
+    background: rgba(255,215,0,0.15);
+    color: var(--gold);
+    border: 1px solid rgba(255,215,0,0.3);
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="watch-logo">
+      <div class="watch-icon">👁️</div>
+      <span class="watch-title">YO-KAI WATCH</span>
+    </div>
+    <div class="subtitle">Yokai Scanner</div>
+  </div>
+
+  <div class="mode-tabs">
+    <button class="tab active" onclick="switchTab('camera')">📷 Camera</button>
+    <button class="tab" onclick="switchTab('upload')">🖼️ Upload Image</button>
+  </div>
+
+  <!-- Camera tab -->
+  <div id="tab-camera" class="tab-panel active">
+    <div class="scanner-frame" id="scanner-frame">
+      <video id="camera-feed" autoplay playsinline muted></video>
+      <canvas id="snapshot-canvas"></canvas>
+      <div class="flash-overlay" id="flash"></div>
+      <div class="scanner-overlay">
+        <div class="corner tl"></div>
+        <div class="corner tr"></div>
+        <div class="corner bl"></div>
+        <div class="corner br"></div>
+        <div class="scan-line" id="scan-line"></div>
+        <div class="zoom-bar" id="zoom-bar">
+          <span class="zoom-icon">🔭</span>
+          <input type="range" id="zoom-slider" min="1" max="5" step="0.1" value="1" oninput="applyZoom(this.value)">
+          <span class="zoom-label" id="zoom-label">1×</span>
+        </div>
+      </div>
+      <div class="no-camera-msg" id="no-camera-msg" style="display:none">
+        <div class="cam-icon">📷</div>
+        <p>Camera not started.<br>Press the camera button below.</p>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="btn btn-camera" id="toggle-camera-btn" onclick="toggleCamera()" title="Toggle camera">📷</button>
+      <button class="btn btn-scan" id="scan-btn" onclick="scanYokai()" disabled>🔍 SCAN FOR YO-KAI</button>
+    </div>
+  </div>
+
+  <!-- Upload tab -->
+  <div id="tab-upload" class="tab-panel">
+    <div style="margin: 14px 0;">
+      <label for="file-input" class="btn-upload" style="display:block">
+        📂 Choose an image from your device
+      </label>
+      <input type="file" id="file-input" accept="image/*" onchange="handleFileUpload(event)">
+    </div>
+    <div id="preview-container" style="display:none; margin-bottom:12px;">
+      <div class="scanner-frame" style="aspect-ratio: unset; min-height: 180px; max-height: 280px; overflow: hidden; display:flex; align-items:center; justify-content:center;">
+        <img id="upload-preview" style="max-width:100%; max-height:280px; object-fit:contain;" alt="Preview">
+      </div>
+    </div>
+    <div class="controls">
+      <button class="btn btn-scan" id="scan-upload-btn" onclick="scanUpload()" disabled>🔍 SCAN IMAGE FOR YO-KAI</button>
+    </div>
+  </div>
+
+  <div class="result-card" id="result-card">
+    <div class="result-idle" id="result-idle">
+      <div class="orb">👁️</div>
+      <p>Point your camera at a Yo-kai or upload an image, then press SCAN to reveal them!</p>
+    </div>
+  </div>
+
+  <div class="footer">POWERED BY YO-KAI WATCH SCANNER v2.0</div>
+</div>
+
+<script>
+const API_URL = 'https://api.anthropic.com/v1/messages';
+let stream = null;
+let cameraActive = false;
+let uploadedImageBase64 = null;
+let uploadedMediaType = null;
+let currentZoom = 1;
+let zoomSupported = false;
+let zoomMin = 1;
+let zoomMax = 1;
+
+const video = document.getElementById('camera-feed');
+const canvas = document.getElementById('snapshot-canvas');
+const scanBtn = document.getElementById('scan-btn');
+const scanUploadBtn = document.getElementById('scan-upload-btn');
+const noCameraMsg = document.getElementById('no-camera-msg');
+const scanLine = document.getElementById('scan-line');
+const flash = document.getElementById('flash');
+const zoomBar = document.getElementById('zoom-bar');
+const zoomSlider = document.getElementById('zoom-slider');
+const zoomLabel = document.getElementById('zoom-label');
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', (i === 0 && tab === 'camera') || (i === 1 && tab === 'upload'));
+  });
+  document.getElementById('tab-camera').classList.toggle('active', tab === 'camera');
+  document.getElementById('tab-upload').classList.toggle('active', tab === 'upload');
+}
+
+async function toggleCamera() {
+  if (cameraActive) {
+    stopCamera();
+  } else {
+    await startCamera();
+  }
+}
+
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    video.srcObject = stream;
+    video.style.display = 'block';
+    noCameraMsg.style.display = 'none';
+    cameraActive = true;
+    scanBtn.disabled = false;
+    document.getElementById('toggle-camera-btn').textContent = '⏹️';
+    scanLine.classList.add('active');
+    setupZoom();
+  } catch (err) {
+    noCameraMsg.style.display = 'flex';
+    noCameraMsg.innerHTML = '<div class="cam-icon">📵</div><p>Camera access denied.<br>Please allow camera permission and try again.</p>';
+    video.style.display = 'none';
+  }
+}
+
+function setupZoom() {
+  const track = stream && stream.getVideoTracks()[0];
+  if (!track) return;
+
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+
+  if (caps.zoom) {
+    // Native hardware zoom
+    zoomSupported = 'hardware';
+    zoomMin = caps.zoom.min || 1;
+    zoomMax = caps.zoom.max || 5;
+    currentZoom = caps.zoom.min || 1;
+    zoomSlider.min = zoomMin;
+    zoomSlider.max = zoomMax;
+    zoomSlider.step = ((zoomMax - zoomMin) / 40) || 0.1;
+    zoomSlider.value = currentZoom;
+    zoomLabel.textContent = parseFloat(currentZoom).toFixed(1) + '×';
+    zoomBar.classList.add('visible');
+  } else {
+    // Software zoom fallback via CSS transform on the video element
+    zoomSupported = 'software';
+    zoomMin = 1;
+    zoomMax = 5;
+    currentZoom = 1;
+    zoomSlider.min = 1;
+    zoomSlider.max = 5;
+    zoomSlider.step = 0.1;
+    zoomSlider.value = 1;
+    zoomLabel.textContent = '1×';
+    zoomBar.classList.add('visible');
+  }
+}
+
+async function applyZoom(val) {
+  currentZoom = parseFloat(val);
+  zoomLabel.textContent = currentZoom.toFixed(1) + '×';
+
+  if (zoomSupported === 'hardware') {
+    const track = stream && stream.getVideoTracks()[0];
+    if (track && track.applyConstraints) {
+      try {
+        await track.applyConstraints({ advanced: [{ zoom: currentZoom }] });
+      } catch (e) {
+        // Fallback to software if hardware fails
+        applySoftwareZoom(currentZoom);
+      }
+    }
+  } else {
+    applySoftwareZoom(currentZoom);
+  }
+}
+
+function applySoftwareZoom(scale) {
+  // Scale the video up from center, clipped by the overflow:hidden on the parent
+  video.style.transform = `scale(${scale})`;
+  video.style.transformOrigin = 'center center';
+}
+
+function stopCamera() {
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  video.srcObject = null;
+  video.style.transform = '';
+  cameraActive = false;
+  zoomSupported = false;
+  currentZoom = 1;
+  zoomSlider.value = 1;
+  zoomLabel.textContent = '1×';
+  zoomBar.classList.remove('visible');
+  scanBtn.disabled = true;
+  document.getElementById('toggle-camera-btn').textContent = '📷';
+  scanLine.classList.remove('active');
+  noCameraMsg.style.display = 'flex';
+  noCameraMsg.innerHTML = '<div class="cam-icon">📷</div><p>Camera not started.<br>Press the camera button below.</p>';
+  video.style.display = 'none';
+}
+
+function captureFrame() {
+  const vw = video.videoWidth || 640;
+  const vh = video.videoHeight || 480;
+
+  if (zoomSupported === 'software' && currentZoom > 1) {
+    // Crop the center portion matching the visual zoom
+    const cropW = vw / currentZoom;
+    const cropH = vh / currentZoom;
+    const cropX = (vw - cropW) / 2;
+    const cropY = (vh - cropH) / 2;
+    canvas.width = Math.round(cropW);
+    canvas.height = Math.round(cropH);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, canvas.width, canvas.height);
+  } else {
+    canvas.width = vw;
+    canvas.height = vh;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+  }
+
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  return dataUrl.split(',')[1];
+}
+
+function flashEffect() {
+  flash.classList.add('flash');
+  setTimeout(() => flash.classList.remove('flash'), 150);
+}
+
+function handleFileUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  uploadedMediaType = file.type || 'image/jpeg';
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+    uploadedImageBase64 = dataUrl.split(',')[1];
+    document.getElementById('upload-preview').src = dataUrl;
+    document.getElementById('preview-container').style.display = 'block';
+    scanUploadBtn.disabled = false;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function scanUpload() {
+  if (!uploadedImageBase64) return;
+  setLoading();
+  try {
+    const result = await callYokaiAPI(uploadedImageBase64, uploadedMediaType);
+    displayResult(result);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+async function scanYokai() {
+  if (!cameraActive) return;
+  flashEffect();
+  const imageBase64 = captureFrame();
+  setLoading();
+  try {
+    const result = await callYokaiAPI(imageBase64, 'image/jpeg');
+    displayResult(result);
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+async function callYokaiAPI(imageBase64, mediaType) {
+  const prompt = `You are an expert Yo-kai Watch scanner. Analyze this image and identify any Yo-kai characters from the Yo-kai Watch franchise (anime, games, manga).
+
+If you see a Yo-kai character (or something that resembles one), respond with ONLY a JSON object (no markdown, no extra text):
+{
+  "found": true,
+  "name": "Yo-kai name",
+  "emoji": "a single fitting emoji that represents this yokai",
+  "tribe": "one of: Brave, Mysterious, Charming, Tough, Heartful, Shady, Slippery, Eerie",
+  "favorite_food": "their canonical favorite food/food category",
+  "food_description": "1-2 sentences about why they love this food and how they react to it",
+  "description": "2-3 sentence description of the Yo-kai's personality and ability/inspiriting effect"
+}
+
+If you do NOT see a Yo-kai but see something that looks like it could be inspired by one, make a creative suggestion. If the image has nothing Yo-kai related, respond:
+{
+  "found": false,
+  "message": "A short funny message in Yo-kai Watch style about not finding any Yo-kai (1-2 sentences)"
+}
+
+Be creative — common objects, animals, or spooky things can all be matched to a Yo-kai!`;
+
+  const response = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
+          { type: 'text', text: prompt }
+        ]
+      }]
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API error ${response.status}`);
+  }
+
+  const data = await response.json();
+  const text = data.content.map(b => b.text || '').join('').trim();
+  const cleaned = text.replace(/```json|```/g, '').trim();
+  return JSON.parse(cleaned);
+}
+
+function setLoading() {
+  const card = document.getElementById('result-card');
+  card.innerHTML = `
+    <div class="loading-state">
+      <div class="yokai-spinner"></div>
+      <p>🔮 Scanning for Yo-kai...</p>
+    </div>`;
+}
+
+function displayResult(data) {
+  const card = document.getElementById('result-card');
+  if (!data.found) {
+    card.innerHTML = `
+      <div class="result-idle">
+        <div class="orb">🌀</div>
+        <p>${data.message || 'No Yo-kai detected in this area... yet!'}</p>
+      </div>`;
+    return;
+  }
+
+  const tribe = (data.tribe || 'Brave').toLowerCase();
+  const tribeClass = 'tribe-' + tribe;
+
+  card.innerHTML = `
+    <div class="yokai-result">
+      <div class="yokai-header">
+        <div class="yokai-medal">${data.emoji || '👁️'}</div>
+        <div>
+          <div class="yokai-name">${data.name}</div>
+          <span class="yokai-tribe ${tribeClass}">${data.tribe} Tribe</span>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="food-section">
+        <div class="food-label">⭐ Favorite Food</div>
+        <div class="food-name">${data.favorite_food}</div>
+        <div class="food-desc">${data.food_description}</div>
+      </div>
+      <div class="description-section">${data.description}</div>
+    </div>`;
+}
+
+function showError(msg) {
+  const card = document.getElementById('result-card');
+  card.innerHTML = `
+    <div class="error-state">
+      <div class="error-icon">⚠️</div>
+      <p>Scanner malfunction!<br><small>${msg}</small></p>
+    </div>`;
+}
+
+// Auto-show camera prompt on load
+noCameraMsg.style.display = 'flex';
+video.style.display = 'none';
+</script>
+
+
+</body>
+</html>
